@@ -33,6 +33,7 @@ body.lg h1{text-align:center;font-size:48px;letter-spacing:.2em;font-weight:700;
 .lc h2{margin:0;font-size:18px;text-align:center;color:var(--brand)}
 .lc button{background:var(--brand);border-color:var(--brand);color:#fff}
 @media print{body::before{display:none!important}}
+.lc button.lk{background:none;border:0;color:var(--brand);text-decoration:underline;padding:4px}
 </style></head><body><main>
 <h1 id="ttl">Namce</h1>
 <nav id="nav"></nav><div id="v"></div><div id="pr"></div>
@@ -46,7 +47,7 @@ const firebaseConfig={apiKey:"AIzaSyABhJMD8xoAo3BXcIWXLoc-DtRlx1za52A",authDomai
 // ============================================================
 firebase.initializeApp(firebaseConfig);
 const auth=firebase.auth(),db=firebase.firestore(),REF=db.doc('app/state');
-let user=null,unsub=null,msg='',ready=false;
+let user=null,unsub=null,unsubU=null,unsubA=null,msg='',ready=false,pend=false,reg=false,mode='in',isM=false,uList=[],lastPc=-1;
 const hm=t=>{const [h,m]=t.split(':');return +h*60+ +m},ft=t=>t.endsWith(':00')?t.slice(0,2)+'h':t.replace(':','h');
 const D=['Sexta-feira','Sábado','Domingo'];
 const PER=[['E1','EEsp 1',0,'14:00','18:00'],['E2','EEsp 2',0,'18:00','22:00'],['L1','LC 1',0,'19:00','07:00'],
@@ -74,18 +75,48 @@ const st=(e,w,k)=>{const p=PM[k],m=x=>x.emp===e&&x.date===w;
  return'ok'};
 function toggle(e,k){const s=st(e,wk,k);if(s!=='ok'&&s!=='sel')return;
  if(s==='sel')S.sched=S.sched.filter(x=>!(x.emp===e&&x.date===wk&&x.per===k));else S.sched.push({emp:e,date:wk,per:k});save();render()}
-function login(){auth.signInWithEmailAndPassword($('le').value.trim(),$('lp').value).catch(e=>{msg='E-mail ou senha inválidos.';render()})}
-function vl(){return`<div class="card lc"><h2>Login</h2><div class="row" style="margin-top:14px;flex-direction:column;align-items:stretch"><input id="le" type="email" placeholder="E-mail"><input id="lp" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter')login()"><button onclick="login()">Entrar</button><span style="color:#c0392b">${msg}</span></div></div>`}
-auth.onAuthStateChanged(u=>{user=u;ready=true;if(unsub){unsub();unsub=null}
- if(u)unsub=REF.onSnapshot(d=>{if(d.exists&&!d.metadata.hasPendingWrites)S=Object.assign({emps:[],prior:[],sched:[],flags:[],desc:{},title:'Escala de MCEs'},d.data());render()},e=>{msg='Sem permissão de acesso.';auth.signOut()});
- render()});
+const ER={'auth/email-already-in-use':'Este e-mail já está cadastrado.','auth/weak-password':'A senha deve ter ao menos 6 caracteres.','auth/invalid-email':'E-mail inválido.','auth/network-request-failed':'Sem conexão com a internet.'};
+const err=t=>{msg=t;const m=$('lm');if(m)m.textContent=t};
+function setMode(m){mode=m;msg='';render()}
+function login(){auth.signInWithEmailAndPassword($('le').value.trim(),$('lp').value).catch(e=>err('E-mail ou senha inválidos.'))}
+async function register(){const n=$('rn').value.trim(),m=$('re').value.trim(),p=$('rp').value;
+ if(!n||!m||!p)return err('Preencha todos os campos.');
+ if(p!==$('rq').value)return err('As senhas não coincidem.');
+ reg=true;err('');
+ try{const c=await auth.createUserWithEmailAndPassword(m,p);
+  await db.doc('usuarios/'+c.user.uid).set({nome:n,email:m,aprovado:false,criado:firebase.firestore.FieldValue.serverTimestamp()})}
+ catch(e){err(ER[e.code]||'Não foi possível concluir o cadastro.')}
+ reg=false;if(auth.currentUser){user=auth.currentUser;session(user)}}
+function vl(){const up=mode==='up';
+ return`<div class="card lc"><h2>${up?'Cadastro':'Login'}</h2><div class="row" style="margin-top:14px;flex-direction:column;align-items:stretch">`+(up?
+ `<input id="rn" placeholder="Nome completo"><input id="re" type="email" placeholder="E-mail"><input id="rp" type="password" placeholder="Senha (mín. 6 caracteres)"><input id="rq" type="password" placeholder="Confirmar senha" onkeydown="if(event.key==='Enter')register()"><button onclick="register()">Criar conta</button>`:
+ `<input id="le" type="email" placeholder="E-mail"><input id="lp" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter')login()"><button onclick="login()">Entrar</button>`)
+ +`<span id="lm" style="color:#c0392b">${msg}</span><button class="lk" onclick="setMode('${up?'in':'up'}')">${up?'Já tenho conta – entrar':'Não tem conta? Cadastre-se'}</button></div>${up?'<p class="leg" style="margin:8px 0 0">O acesso só é liberado após aprovação de um administrador.</p>':''}</div>`}
+function vw(){return`<div class="card lc"><h2>Aguardando aprovação</h2><p style="text-align:center;margin:12px 0">Seu cadastro foi enviado.<br>Assim que um administrador aprovar, o acesso será liberado automaticamente.</p><div class="row" style="justify-content:center;margin:0"><button onclick="auth.signOut()">Sair</button></div></div>`}
+function stopAll(){[unsub,unsubU,unsubA].forEach(f=>f&&f());unsub=unsubU=unsubA=null}
+function startState(){if(unsub)return;
+ unsub=REF.onSnapshot(d=>{if(d.exists&&!d.metadata.hasPendingWrites)S=Object.assign({emps:[],prior:[],sched:[],flags:[],desc:{},title:'Escala de MCEs'},d.data());render()},e=>{msg='Sem permissão de acesso.';auth.signOut()});
+ unsubA=db.collection('usuarios').onSnapshot(q=>{isM=true;uList=q.docs.map(d=>({id:d.id,...d.data()}));const pc=uList.filter(x=>!x.aprovado).length;if(pc!==lastPc||tab==='u'){lastPc=pc;render()}},e=>{isM=false;uList=[]})}
+function session(u){stopAll();pend=false;isM=false;uList=[];lastPc=-1;
+ if(!u){render();return}
+ unsubU=db.doc('usuarios/'+u.uid).onSnapshot(d=>{
+  if(d.exists&&d.data().aprovado!==true){pend=true;if(unsub){unsub();unsub=null}if(unsubA){unsubA();unsubA=null}render()}
+  else{pend=false;startState();render()}},e=>startState())}
+auth.onAuthStateChanged(u=>{user=u;ready=true;if(!reg)session(u)});
 function render(){
- document.body.classList.toggle('lg',ready&&!user);
+ document.body.classList.toggle('lg',ready&&(!user||pend));
  if(!ready)return;
  if(!user){$('nav').innerHTML='';$('v').innerHTML=vl();return}
- $('nav').innerHTML=TABS.map(t=>`<button class="${t[0]===tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')+'<button onclick="expData()" title="Baixar um backup dos dados">⬇ Exportar</button><button onclick="$(\'imp\').click()" title="Carregar dados de um backup">⬆ Importar</button><input type="file" id="imp" accept=".json,application/json" hidden onchange="impData(this)"><button onclick="auth.signOut()" style="margin-left:auto">Sair</button>';
- $('v').innerHTML=({d:vd,a:va,f:vf,e:ve})[tab]();
+ if(pend){$('nav').innerHTML='';$('v').innerHTML=vw();return}
+ const pc=uList.filter(x=>!x.aprovado).length,T=TABS.concat(isM?[['u','Acessos'+(pc?' ('+pc+')':'')]]:[]);
+ $('nav').innerHTML=T.map(t=>`<button class="${t[0]===tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')+'<button onclick="expData()" title="Baixar um backup dos dados">⬇ Exportar</button><button onclick="$(\'imp\').click()" title="Carregar dados de um backup">⬆ Importar</button><input type="file" id="imp" accept=".json,application/json" hidden onchange="impData(this)"><button onclick="auth.signOut()" style="margin-left:auto">Sair</button>';
+ $('v').innerHTML=({d:vd,a:va,f:vf,e:ve,u:vu})[tab==='u'&&!isM?'d':tab]();
 }
+function vu(){
+ const L=[...uList].sort((a,b)=>(a.aprovado===b.aprovado?0:a.aprovado?1:-1)||(a.nome||'').localeCompare(b.nome||'')).map(x=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.email)}</td><td>${x.aprovado?'✅ Aprovado':'⏳ Pendente'}</td><td style="text-align:right">${x.aprovado?`<button class="x" onclick="acesso('${x.id}',false)">Revogar</button>`:`<button onclick="acesso('${x.id}',true)">Aprovar</button>`} <button class="x" onclick="delAcesso('${x.id}')">Excluir</button></td></tr>`).join('');
+ return`<div class="card"><b>Solicitações de acesso</b> <span class="mut">(quem se cadastra fica pendente até ser aprovado aqui)</span><table style="margin-top:8px"><tr><th>Nome</th><th>E-mail</th><th>Situação</th><th></th></tr>${L||'<tr><td colspan=4 class="mut">Nenhum cadastro.</td></tr>'}</table></div>`}
+function acesso(id,v){db.doc('usuarios/'+id).update({aprovado:v}).catch(e=>alert('Erro: '+e.message))}
+function delAcesso(id){if(confirm('Excluir este cadastro? A conta continua existindo no Firebase Authentication (apague lá se quiser removê-la de vez).'))db.doc('usuarios/'+id).delete().catch(e=>alert('Erro: '+e.message))}
 function expData(){const b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='namce-backup-'+iso(new Date())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
 function impData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.emps))throw 0;
  if(!confirm('Importar "'+f.name+'"? Isso SUBSTITUI todos os dados atuais pelos do arquivo ('+d.emps.length+' cadetes).'))return;
