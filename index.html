@@ -54,7 +54,7 @@ const PER=[['E1','EEsp 1',0,'14:00','18:00'],['E2','EEsp 2',0,'18:00','22:00'],[
 ['E3','EEsp 3',1,'07:15','11:15'],['E4','EEsp 4',1,'14:00','18:00'],['E5','EEsp 5',1,'18:00','22:00'],['L2','LC 2',1,'07:00','19:00'],['L3','LC 3',1,'19:00','07:00'],
 ['E6','EEsp 6',2,'07:15','11:15'],['E7','EEsp 7',2,'14:00','18:00'],['E8','EEsp 8',2,'18:00','22:00'],['L4','LC 4',2,'07:00','19:00'],['L5','LC 5',2,'19:00','07:00']].map(([k,n,d,s,e])=>{const a=d*1440+hm(s);let b=d*1440+hm(e);if(b<=a)b+=1440;return{k,n,d,a,b,h:ft(s)+'–'+ft(e),i:k[0]==='E'?'⏱️':'⏳'}});
 const PM=Object.fromEntries(PER.map(p=>[p.k,p])),ov=(p,q)=>p.a<q.b&&q.a<p.b;
-const TABS=[['d','Dashboard'],['a','Escalas anteriores'],['f','Cadetes'],['e','Escala / PDF']];
+const TABS=[['d','Dashboard'],['a','Escalas'],['f','Cadetes'],['e','Escala / PDF']];
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const addD=(s,n)=>{const d=new Date(s+'T12:00');d.setDate(d.getDate()+n);return iso(d)};
 const snap=s=>{const w=new Date(s+'T12:00').getDay();return addD(s,w===0?-2:5-w)};
@@ -109,7 +109,7 @@ function render(){
  if(!user){$('nav').innerHTML='';$('v').innerHTML=vl();return}
  if(pend){$('nav').innerHTML='';$('v').innerHTML=vw();return}
  const pc=uList.filter(x=>!x.aprovado).length,T=TABS.concat(isM?[['u','Acessos'+(pc?' ('+pc+')':'')]]:[]);
- $('nav').innerHTML=T.map(t=>`<button class="${t[0]===tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')+'<button onclick="expData()" title="Baixar um backup dos dados">⬇ Exportar</button><button onclick="$(\'imp\').click()" title="Carregar dados de um backup">⬆ Importar</button><input type="file" id="imp" accept=".json,application/json" hidden onchange="impData(this)"><button onclick="auth.signOut()" style="margin-left:auto">Sair</button>';
+ $('nav').innerHTML=T.map(t=>`<button class="${t[0]===tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')+'<button onclick="auth.signOut()" style="margin-left:auto">Sair</button>';
  $('v').innerHTML=({d:vd,a:va,f:vf,e:ve,u:vu})[tab==='u'&&!isM?'d':tab]();
 }
 function vu(){
@@ -117,10 +117,6 @@ function vu(){
  return`<div class="card"><b>Solicitações de acesso</b> <span class="mut">(quem se cadastra fica pendente até ser aprovado aqui)</span><table style="margin-top:8px"><tr><th>Nome</th><th>E-mail</th><th>Situação</th><th></th></tr>${L||'<tr><td colspan=4 class="mut">Nenhum cadastro.</td></tr>'}</table></div>`}
 function acesso(id,v){db.doc('usuarios/'+id).update({aprovado:v}).catch(e=>alert('Erro: '+e.message))}
 function delAcesso(id){if(confirm('Excluir este cadastro? A conta continua existindo no Firebase Authentication (apague lá se quiser removê-la de vez).'))db.doc('usuarios/'+id).delete().catch(e=>alert('Erro: '+e.message))}
-function expData(){const b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='namce-backup-'+iso(new Date())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
-function impData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.emps))throw 0;
- if(!confirm('Importar "'+f.name+'"? Isso SUBSTITUI todos os dados atuais pelos do arquivo ('+d.emps.length+' cadetes).'))return;
- S=Object.assign({emps:[],prior:[],sched:[],flags:[],desc:{},title:'Escala de MCEs'},d);save();render()}catch(e){alert('Arquivo de backup inválido.')}};r.readAsText(f);inp.value=''}
 function setDesc(id,v){S.desc=S.desc||{};const k=id+'|'+wk;v=v.trim();if(v)S.desc[k]=v;else delete S.desc[k];save()}
 function flag(e,t){const f=fl(e,wk);
  if(f&&f.t===t)S.flags=S.flags.filter(x=>x!==f);
